@@ -8,7 +8,7 @@ st.set_page_config(
     layout="wide",
 )
 
-DEFAULT_LEAGUE_ID = "1380298433323098112"
+league_id = str(st.secrets["SLEEPER_LEAGUE_ID"])
 API_BASE = "https://api.sleeper.app/v1"
 
 
@@ -180,7 +180,6 @@ st.write(
 
 with st.sidebar:
     st.header("League settings")
-    league_id = st.text_input("Sleeper league ID", DEFAULT_LEAGUE_ID)
     first_week, last_week = st.slider(
         "Weeks to analyze",
         min_value=1,
