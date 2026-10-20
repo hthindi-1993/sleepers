@@ -6,6 +6,7 @@ st.set_page_config(
     page_title="Fantasy League Analytics",
     page_icon="🏈",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 league_id = str(st.secrets["SLEEPER_LEAGUE_ID"])
@@ -274,7 +275,42 @@ with standings_tab:
         )
     )
 
-    st.dataframe(styled, hide_index=True, use_container_width=True)
+    mobile_columns = [
+    "Manager",
+    "Current standing",
+    "Theoretical standing",
+    "Standing change",
+    "Schedule luck",
+    ]
+
+    compact_table = table[mobile_columns].rename(columns={
+        "Current standing": "Actual rank",
+        "Theoretical standing": "Scoring rank",
+        "Standing change": "Rank change",
+        "Schedule luck": "Luck",
+    })
+
+    st.dataframe(
+        compact_table.style.format({
+            "Rank change": "{:+.0f}",
+            "Luck": "{:+.2f}",
+        }),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    st.caption(
+        "Positive rank change = would move up. "
+        "Positive luck = more wins than scoring suggests. "
+        "Swipe horizontally to see all columns."
+    )
+
+    with st.expander("View detailed statistics"):
+        st.dataframe(
+            styled,
+            hide_index=True,
+            use_container_width=True,
+        )
     st.caption(
         "Current standing ranks actual win credit, then total points, "
         "for the selected weeks. Theoretical standing ranks scoring-based "
