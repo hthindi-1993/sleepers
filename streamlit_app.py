@@ -173,6 +173,70 @@ def calculate_analytics(raw):
     ).reset_index(drop=True)
 
 
+def build_manager_matrix(weekly, summary):
+    """Record for each manager if they played each opponent every week."""
+    name_counts = summary["display_name"].value_counts()
+    labels = {}
+    for row in summary.itertuples(index=False):
+        name = row.display_name
+        if name_counts[name] > 1:
+            labels[row.roster_id] = f"{name} ({row.roster_id})"
+        else:
+            labels[row.roster_id] = name
+
+    roster_ids = [
+        roster_id
+        for roster_id in summary["roster_id"]
+        if roster_id in set(weekly["roster_id"])
+    ]
+    scores = weekly.pivot_table(
+        index="week",
+        columns="roster_id",
+        values="points_scored",
+        aggfunc="first",
+    )
+
+    records = pd.DataFrame(
+        index=[labels[roster_id] for roster_id in roster_ids],
+        columns=[labels[roster_id] for roster_id in roster_ids],
+        dtype=object,
+    )
+
+    for manager_id in roster_ids:
+        for opponent_id in roster_ids:
+            manager = labels[manager_id]
+            opponent = labels[opponent_id]
+            if manager_id == opponent_id:
+                records.loc[manager, opponent] = "—"
+                continue
+
+            both = scores[[manager_id, opponent_id]].dropna()
+            wins = int((both[manager_id] > both[opponent_id]).sum())
+            losses = int((both[manager_id] < both[opponent_id]).sum())
+            ties = int((both[manager_id] == both[opponent_id]).sum())
+            if ties:
+                records.loc[manager, opponent] = f"{wins}-{losses}-{ties}"
+            else:
+                records.loc[manager, opponent] = f"{wins}-{losses}"
+
+    records.index.name = "Manager"
+    records.columns = pd.MultiIndex.from_product(
+        [["Opponent"], records.columns]
+    )
+    return records
+
+
+def color_manager_record(value):
+    if not isinstance(value, str) or value == "—":
+        return "background-color: #ffffff; color: #666666"
+    wins, losses = (int(part) for part in value.split("-")[:2])
+    if wins > losses:
+        return "background-color: #C6EFCE; color: #006100"
+    if wins < losses:
+        return "background-color: #FFC7CE; color: #9C0006"
+    return "background-color: #ffffff; color: #333333"
+
+
 st.title("🏈 Who’s Getting the Breaks?")
 st.write(
     "Compare actual results with how each manager scored "
@@ -228,8 +292,11 @@ st.info(
     "**Standing change:** positive means the manager would move up."
 )
 
-standings_tab, luck_tab, weekly_tab = st.tabs([
-    "Standings", "Schedule luck", "Weekly results"
+standings_tab, luck_tab, weekly_tab, matrix_tab = st.tabs([
+    "Standings",
+    "Schedule luck",
+    "Weekly results",
+    "Manager matrix",
 ])
 
 with standings_tab:
@@ -402,6 +469,30 @@ with weekly_tab:
         use_container_width=True,
     )
 
+with matrix_tab:
+    matrix = build_manager_matrix(weekly, summary)
+    st.caption(
+        "Each cell is the Manager’s record if they had played that "
+        "Opponent every selected week. Green is a winning record, red is "
+        "a losing record, and white is an even record. A tie score is "
+        "shown as wins-losses-ties. Managers are ordered by current standing."
+    )
+    styler = matrix.style
+    if hasattr(styler, "map"):
+        styler = styler.map(color_manager_record)
+    else:
+        styler = styler.applymap(color_manager_record)
+    styler = styler.set_properties(**{
+        "text-align": "center",
+        "font-weight": "600",
+    })
+    # Two header rows (Opponent, then names) plus one row per manager.
+    st.dataframe(
+        styler,
+        height=35 * (len(matrix) + 2) + 8,
+        width="stretch",
+    )
+
 with st.expander("How the calculations work"):
     st.markdown("""
 - **Scoring-based wins:** the fraction of other teams a manager
@@ -412,6 +503,9 @@ with st.expander("How the calculations work"):
 - **Theoretical standing:** ranking by total scoring-based wins.
 - **Standing change:** current standing minus theoretical standing.
   Moving from 8th to 3rd is **+5**.
+- **Manager matrix:** the row manager’s record if they had faced that
+  column opponent in every selected week. More wins than losses is green,
+  fewer is red, and an equal number is white.
 
 Only rows with scores for both scheduled opponents are included.
 Scores alone do not indicate that a week has finished; select completed weeks.
